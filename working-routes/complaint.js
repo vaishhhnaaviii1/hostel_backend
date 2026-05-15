@@ -55,4 +55,69 @@ router.put('/update-complaint', auth, async (req, res) => {
     }
 });
 
+router.post('/postcomplaint', auth, async (req, res) => {
+  const { title, description, hostel } = req.body;
+  const { id: student_id } = req.user; // Get securely from token
+
+  if (!title || !description || !hostel) {
+    return res.status(400).json({ message: 'Missing required fields' });
+  }
+
+  try {
+    const result = await pool.query(
+      'INSERT INTO complaint (student_id, title, description, hostel) VALUES ($1, $2, $3, $4) RETURNING *', 
+      [student_id, title, description, hostel]
+    );
+    
+    return res.status(200).json({ message: 'Complaint submitted successfully', complaint: result.rows[0] });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+router.get('/my-complaints', auth, async (req, res) => {
+  const { id: student_id } = req.user;
+
+  try {
+    const complaints = await pool.query(
+      'SELECT * FROM complaint WHERE student_id = $1 ORDER BY date_created DESC',
+      [student_id]
+    );
+    return res.status(200).json({ complaints: complaints.rows });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+router.put('/upvote', auth, async (req, res) => {
+    const { complaint_id } = req.body;
+
+    if (!complaint_id) {
+        return res.status(400).json({ message: 'complaint_id is required' });
+    }
+
+    try {
+        // Increment the upvote count by 1. 
+        // We add "AND status = 'pending'" so resolved complaints can't be upvoted.
+        const result = await pool.query(
+            `UPDATE complaint 
+             SET upvotes = upvotes + 1 
+             WHERE id = $1 AND status = 'pending'
+             RETURNING *`,
+            [complaint_id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: 'Complaint not found or already resolved' });
+        }
+
+        return res.status(200).json({ message: 'Upvoted successfully', complaint: result.rows[0] });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
 export default router;
